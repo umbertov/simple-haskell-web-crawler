@@ -27,6 +27,7 @@ initiator seeds = do urlsC <- newChan -- canale
 scheduler :: Set URL -> Chan URL -> IO ()
 scheduler visited chan = do 
     url <- readChan chan
+    when (isIgnoredUrl url) (scheduler visited chan)
     if not (url `Set.member` visited)
        then do putStrLn url
                forkIO (worker chan url) -- parte il thread
@@ -51,11 +52,14 @@ worker chan url = do
         getHref = do
             u <- attr "href" anySelector
 
-            if ((not $null u) && head u == '/') then
+            if (isRelativeUrl u) then
                 return $ (baseUrl url) ++ u
             else
                 return u
 
+isRelativeUrl u = (not (null u)) && head u == '/'
+
+isIgnoredUrl u = (null u) || head u == '#'
 
 baseUrl :: URL -> URL
 baseUrl u = case findIndices (=='/') u of
