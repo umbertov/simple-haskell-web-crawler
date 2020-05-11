@@ -64,6 +64,7 @@ executable mycrawl
     , scalpel
     , containers
     , mtl
+    , BoundedChan
 
   -- Directories containing source files.
   -- hs-source-dirs:

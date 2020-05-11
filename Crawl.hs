@@ -3,7 +3,9 @@
 module Main where
 
 
-import Control.Concurrent
+import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent.BoundedChan
+import Control.Concurrent.MVar
 import Control.Monad
 import Control.Monad.State.Lazy
 
@@ -17,14 +19,14 @@ import Text.HTML.Scalpel
 
 
 data SchedulerState = SchedulerState 
-    { getChan      :: Chan URL
+    { getChan      :: BoundedChan URL
     , getVisited   :: Set URL
     }
 
 
 -- inizializza canale e insieme di pagine gia' visitate, poi fa partire tutto
 initiator :: [URL] -> IO ((), SchedulerState)
-initiator seeds = do urlsChan <- newChan -- canale
+initiator seeds = do urlsChan <- newBoundedChan 400 -- canale
                      let visited = Set.empty :: Set URL
                      forM_ seeds (writeChan urlsChan) -- scrivi i seed url nel canale
                      runStateT scheduler (SchedulerState urlsChan visited)
@@ -38,16 +40,14 @@ scheduler = do
         visited = getVisited s
     url <- liftIO $ readChan chan
     when (not (url `Set.member` visited)) $ do
-        newVisited <- liftIO $ runWorker url chan visited
-        put $ SchedulerState chan newVisited
-        scheduler
-    scheduler
+        liftIO $ runWorker url chan visited 
+        let newVisited = Set.union visited (Set.singleton url)
+        put $ SchedulerState chan newVisited 
+    scheduler -- repeat
     where 
-        runWorker url chan visited= do 
+        runWorker url chan visited = do 
             putStrLn url
             forkIO (worker chan url)
-            let newVisited = Set.union visited (Set.singleton url)
-            return newVisited
 
 incMVar v = do
     n <- takeMVar v
@@ -57,7 +57,7 @@ decMVar v = do
     n <- takeMVar v
     putMVar v (n-1)
 
-worker :: Chan URL -> URL -> IO ()
+worker :: BoundedChan URL -> URL -> IO ()
 worker chan url = do
     -- estrai una lista di Maybe URL
     urls <- scrapeURL url (chroots (tagSelector "a") getHref)
