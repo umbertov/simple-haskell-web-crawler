@@ -23,8 +23,7 @@ data SchedulerState = SchedulerState
 
 
 -- inizializza canale e insieme di pagine gia' visitate, poi fa partire tutto
---initiator :: [URL] -> StateT SchedulerState IO a
---initiator :: [URL] -> IO ((), SchedulerState)
+initiator :: [URL] -> IO ((), SchedulerState)
 initiator seeds = do urlsChan <- newChan -- canale
                      let visited = Set.empty :: Set URL
                      forM_ seeds (writeChan urlsChan) -- scrivi i seed url nel canale
@@ -32,12 +31,11 @@ initiator seeds = do urlsChan <- newChan -- canale
 
 sleep n = threadDelay (n * (10^6))
 
---scheduler :: StateT SchedulerState IO ()
+scheduler :: StateT SchedulerState IO ()
 scheduler = do
     s <- get
     let chan = getChan s
         visited = getVisited s
-    --when (nThreads > 4) $ liftIO (sleep 1) >> scheduler
     url <- liftIO $ readChan chan
     when (not (url `Set.member` visited)) $ do
         newVisited <- liftIO $ runWorker url chan visited
