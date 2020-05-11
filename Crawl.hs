@@ -5,6 +5,7 @@ module Main where
 
 import Control.Concurrent
 import Control.Monad
+import Control.Monad.State.Lazy
 
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -15,26 +16,48 @@ import Data.List
 import Text.HTML.Scalpel
 
 
+data SchedulerState = SchedulerState 
+    { getChan      :: Chan URL
+    , getVisited   :: Set URL
+    }
+
+
 -- inizializza canale e insieme di pagine gia' visitate, poi fa partire tutto
-initiator :: [URL] -> IO ()
-initiator seeds = do urlsC <- newChan -- canale
+--initiator :: [URL] -> StateT SchedulerState IO a
+--initiator :: [URL] -> IO ((), SchedulerState)
+initiator seeds = do urlsChan <- newChan -- canale
                      let visited = Set.empty :: Set URL
-                     forM_ seeds (writeChan urlsC) -- scrivi i seed url nel canale
-                     scheduler visited urlsC
+                     forM_ seeds (writeChan urlsChan) -- scrivi i seed url nel canale
+                     runStateT scheduler (SchedulerState urlsChan visited)
 
+sleep n = threadDelay (n * (10^6))
 
--- legge un URL dal canale, e lo scrapa se non e' gia' visitato.
-scheduler :: Set URL -> Chan URL -> IO ()
-scheduler visited chan = do 
-    url <- readChan chan
-    when (isIgnoredUrl url) (scheduler visited chan)
-    if not (url `Set.member` visited)
-       then do putStrLn url
-               forkIO (worker chan url) -- parte il thread
-               scheduler (Set.union visited (Set.singleton url)) chan 
-        else
-            scheduler visited chan
+--scheduler :: StateT SchedulerState IO ()
+scheduler = do
+    s <- get
+    let chan = getChan s
+        visited = getVisited s
+    --when (nThreads > 4) $ liftIO (sleep 1) >> scheduler
+    url <- liftIO $ readChan chan
+    when (not (url `Set.member` visited)) $ do
+        newVisited <- liftIO $ runWorker url chan visited
+        put $ SchedulerState chan newVisited
+        scheduler
+    scheduler
+    where 
+        runWorker url chan visited= do 
+            putStrLn url
+            forkIO (worker chan url)
+            let newVisited = Set.union visited (Set.singleton url)
+            return newVisited
 
+incMVar v = do
+    n <- takeMVar v
+    putMVar v (n+1)
+
+decMVar v = do
+    n <- takeMVar v
+    putMVar v (n-1)
 
 worker :: Chan URL -> URL -> IO ()
 worker chan url = do
@@ -68,4 +91,4 @@ baseUrl u = case findIndices (=='/') u of
 
 main = do
     initiator ["https://en.wikipedia.org/"]
-
+    return ()
