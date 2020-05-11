@@ -15,13 +15,13 @@ import Data.List
 import Text.HTML.Scalpel
 
 
-
 -- inizializza canale e insieme di pagine gia' visitate, poi fa partire tutto
 initiator :: [URL] -> IO ()
 initiator seeds = do urlsC <- newChan -- canale
                      let visited = Set.empty :: Set URL
                      forM_ seeds (writeChan urlsC) -- scrivi i seed url nel canale
                      scheduler visited urlsC
+
 
 -- legge un URL dal canale, e lo scrapa se non e' gia' visitato.
 scheduler :: Set URL -> Chan URL -> IO ()
@@ -31,7 +31,7 @@ scheduler visited chan = do
     if not (url `Set.member` visited)
        then do putStrLn url
                forkIO (worker chan url) -- parte il thread
-               scheduler (Set.union visited (Set.singleton $ url)) chan 
+               scheduler (Set.union visited (Set.singleton url)) chan 
         else
             scheduler visited chan
 
