@@ -28,12 +28,11 @@ scheduler :: Set URL -> Chan URL -> IO ()
 scheduler visited chan = do 
     url <- readChan chan
     when (isIgnoredUrl url) (scheduler visited chan)
-    if not (url `Set.member` visited)
-       then do putStrLn url
-               forkIO (worker chan url) -- parte il thread
-               scheduler (Set.union visited (Set.singleton url)) chan 
-        else
-            scheduler visited chan
+    when (not (url `Set.member` visited)) $ do 
+        putStrLn url
+        forkIO (worker chan url) -- parte il thread
+        scheduler (Set.union visited (Set.singleton url)) chan 
+    scheduler visited chan
 
 
 worker :: Chan URL -> URL -> IO ()
@@ -51,7 +50,6 @@ worker chan url = do
         -- getHref estrae l'attributo href
         getHref = do
             u <- attr "href" anySelector
-
             if (isRelativeUrl u) then
                 return $ (baseUrl url) ++ u
             else
