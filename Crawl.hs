@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Main where
 
@@ -38,11 +39,10 @@ scheduler = do
     s <- get
     let chan = getChan s
         visited = getVisited s
-    url <- liftIO $ readChan chan
+    url <- liftIO $! readChan chan
     when (not (url `Set.member` visited)) $ do
         liftIO $ runWorker url chan visited 
-        let newVisited = Set.union visited (Set.singleton url)
-        put $ SchedulerState chan newVisited 
+        put $ s { getVisited = Set.union visited (Set.singleton url) }
     scheduler -- repeat
     where 
         runWorker url chan visited = do 
@@ -78,12 +78,12 @@ worker chan url = do
             else
                 return u
 
-isRelativeUrl u = (not (null u)) && head u == '/'
+isRelativeUrl !u = (not (null u)) && head u == '/'
 
-isIgnoredUrl u = (null u) || head u == '#'
+isIgnoredUrl !u = (null u) || head u == '#'
 
 baseUrl :: URL -> URL
-baseUrl u = case findIndices (=='/') u of
+baseUrl !u = case findIndices (=='/') u of
               [] -> u
               (_:_:index:xs) -> take (index+1) u
 
