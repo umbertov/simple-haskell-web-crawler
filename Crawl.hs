@@ -20,8 +20,8 @@ import Text.HTML.Scalpel
 
 
 data SchedulerState = SchedulerState 
-    { getChan      :: BoundedChan URL
-    , getVisited   :: Set URL
+    { urlChan      :: BoundedChan URL -- per leggere i nuovi URL
+    , visitedSet   :: Set URL         -- contiene URL gia' visitati
     }
 
 
@@ -36,13 +36,18 @@ sleep n = threadDelay (n * (10^6))
 
 scheduler :: StateT SchedulerState IO ()
 scheduler = do
+    -- ottieni lo stato corrente
     s <- get
-    let chan = getChan s
-        visited = getVisited s
+    let chan = urlChan s
+        visited = visitedSet s
+    -- ottieni il prossimo URL da (eventualmente) crawlare
     url <- liftIO $! readChan chan
+    -- crawla URL se non gia' visitato
     when (not (url `Set.member` visited)) $ do
+        -- parte il thread
         liftIO $ runWorker url chan visited 
-        put $ s { getVisited = Set.union visited (Set.singleton url) }
+        -- marca URL come gia' visitato e aggiorna lo stato
+        put $ s { visitedSet = Set.union visited (Set.singleton url) }
     scheduler -- repeat
     where 
         runWorker url chan visited = do 
@@ -61,15 +66,15 @@ worker :: BoundedChan URL -> URL -> IO ()
 worker chan url = do
     -- estrai una lista di Maybe URL
     urls <- scrapeURL url (chroots (tagSelector "a") getHref)
-    -- Se url e' Nothing printErr, else scrivi gli url nel canale
+    -- Se url e' Nothing printErr, altrimenti scrivi gli url nel canale
     maybe printErr writeUrls urls 
     return ()
     where
-        writeUrls :: [URL] -> IO () -- scrive l'argomento nel canale
+        -- scrive nel canale tutti gli URL trovati nella pagina corrente
         writeUrls urls = do forM urls (writeChan chan)
                             return () -- senno' i tipi si incazzano
         printErr = putStrLn $ "[ERROR] Could not scrape " ++ (show url)
-        -- getHref estrae l'attributo href
+        -- getHref estrae l'attributo href da una pagina HTML
         getHref = do
             u <- attr "href" anySelector
 
