@@ -7,7 +7,7 @@ WORKDIR $workdir
 RUN cabal update
 
 # Add just the .cabal file to capture dependencies
-COPY ./crawler.cabal $workdir
+COPY ./Crawler.cabal $workdir
 
 # Add and Install Application Code
 COPY . $workdir

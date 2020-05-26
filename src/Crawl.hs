@@ -29,10 +29,14 @@ data SchedulerState = SchedulerState
 initiator :: [URL] -> IO ((), SchedulerState)
 initiator seeds = do urlsChan <- newBoundedChan 400 -- canale
                      let visited = Set.empty :: Set URL
-                     forM_ seeds (writeChan urlsChan) -- scrivi i seed url nel canale
+                     writeUrlsCh seeds urlsChan
+                     --forM_ seeds (writeChan urlsChan) -- scrivi i seed url nel canale
                      runStateT scheduler (SchedulerState urlsChan visited)
 
 sleep n = threadDelay (n * (10^6))
+
+writeUrlsCh :: [URL] -> BoundedChan URL -> IO ()
+writeUrlsCh urls chan = forM_ urls (writeChan chan)
 
 scheduler :: StateT SchedulerState IO ()
 scheduler = do
@@ -41,16 +45,18 @@ scheduler = do
     let chan = urlChan s
         visited = visitedSet s
     -- ottieni il prossimo URL da (eventualmente) crawlare
-    url <- liftIO $! readChan chan
-    -- crawla URL se non gia' visitato
-    when (not (url `Set.member` visited)) $ do
-        -- parte il thread
-        liftIO $ runWorker url chan visited 
-        -- marca URL come gia' visitato e aggiorna lo stato
-        put $ s { visitedSet = Set.union visited (Set.singleton url) }
+    url <- liftIO $ readChan chan
+    -- non crawlare URL se non gia' visitato
+    when (url `Set.member` visited) $ scheduler
+    -- parte il thread
+    -- TODO il thread parte incondizionatamente: 
+    -- facciamo in modo che ci sia un pool di thread di dimensione fissa?
+    runWorker url chan visited 
+    -- marca URL come gia' visitato e aggiorna lo stato
+    put $ s { visitedSet = Set.union visited (Set.singleton url) }
     scheduler -- repeat
     where 
-        runWorker url chan visited = do 
+        runWorker url chan visited = liftIO $ do 
             putStrLn url
             forkIO (worker chan url)
 
@@ -71,7 +77,7 @@ worker chan url = do
     return ()
     where
         -- scrive nel canale tutti gli URL trovati nella pagina corrente
-        writeUrls urls = do forM urls (writeChan chan)
+        writeUrls urls = do writeUrlsCh urls chan
                             return () -- senno' i tipi si incazzano
         printErr = putStrLn $ "[ERROR] Could not scrape " ++ (show url)
         -- getHref estrae l'attributo href da una pagina HTML
@@ -82,6 +88,7 @@ worker chan url = do
                 return $ (baseUrl url) ++ u
             else
                 return u
+
 
 isRelativeUrl !u = (not (null u)) && head u == '/'
 
